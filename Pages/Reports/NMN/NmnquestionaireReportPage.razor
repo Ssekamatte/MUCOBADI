@@ -1,0 +1,481 @@
+﻿@using MUCOBADI.DTOs
+@using MUCOBADI.Data
+@using MUCOBADI.Interfaces
+@using Microsoft.EntityFrameworkCore
+@using Syncfusion.XlsIO
+@using System.IO
+@page "/NmnquestionaireReportPage"
+
+@inject IToastService toastService;
+@inject INmnService Repo;
+@inject MUCOBADIContext db;
+@inject UserManagement userManagement;
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<MudOverlay Visible="@IsLoading" DarkBackground="true" Absolute="true" Style="z-index:200000; height:100vh;">
+    <MudProgressCircular Color="MudBlazor.Color.Secondary" Indeterminate="true" />
+    <MudText Style="color:ghostwhite;">Loading data please wait..</MudText>
+</MudOverlay>
+
+<div class="row">
+    <div class="col-md-12">
+        <BreadCrumbPage CategoryName="NMN" PageName="No Means No Boys & Young Men (10-hour) Pre / Post Questionnaire" />
+    </div>
+    @if(IsLoading == false)
+    {
+        <div class="col-md-12">
+            <SfAccordion ExpandMode="ExpandMode.Single">
+                <AccordionItems>
+                    <AccordionItem Header="Search Model">
+                        <ContentTemplate>
+                            <div class="row" n style="margin:5px;">
+                                <SearchPanelPartialPage @ref=@SearchPanel DistrictData="@DistrictData" SubcountyData="@SubcountyData" Credentials=@Credentials />
+                                <div class="col-md-4">
+                                    <button type="button" style="margin-top:32px;"
+                                            class="btn btn-primary"
+                                            @onclick="@(async()=>{
+                                            InputModel = SearchPanel.SearchReportRecords();
+                                            await DownloadReport();
+                                        })">
+                                        Download Report
+                                    </button>
+
+                                    <button type="button" style="margin-top:32px;"
+                                            class="btn btn-secondary"
+                                            @onclick="@(() => {
+                                                InputModel =SearchPanel.ClearReportSearch();
+                                            })">
+                                        Clear Search
+                                    </button>
+                                </div>
+                            </div>
+                        </ContentTemplate>
+                    </AccordionItem>
+                </AccordionItems>
+            </SfAccordion>
+        </div>
+    }
+    </div>
+
+@code {
+    SearchPanelPartialPage? SearchPanel;
+
+    List<ASubcounty>? SubcountyData { get; set; }
+    List<ADistrict>? DistrictData { get; set; }
+    List<AParish>? ParishData { get; set; }
+    List<AVillage>? VillageData { get; set; }
+    List<AImplementingPartner>? ImplementingPartnerData { get; set; }
+    List<AImplementationMethod>? ImplementationMethodData { get; set; }
+    List<ANmnSampledFor>? NmnSampledForData { get; set; }
+    List<ADeliveryMethod>? DeliveryMethodData { get; set; }
+    List<AInterventionAttendance>? InterventionAttendanceData { get; set; }
+    List<AYesNo>? YesNoData { get; set; }
+    List<ANmnSectionOneQuestion>? NmnSectionOneQuestionData { get; set; }
+    List<ANmnSectionTwoQuestion>? NmnSectionTwoQuestionData { get; set; }
+    List<AAgreeDisagree>? AgreeDisagreeData { get; set; }
+    List<ANmnSectionTwoAnswer>? NmnSectionTwoAnswerData { get; set; }
+    bool IsLoading { get; set; }
+    private ViewUserManagement? Credentials { get; set; }
+
+    private EnrolmentSearchModel InputModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        await base.OnInitializedAsync();
+        try
+        {
+            var data = await Repo.GetPrimaryData();
+            if (data != null)
+            {
+                SubcountyData = data.SubcountyData;
+                DistrictData = data.DistrictData;
+                ParishData = data.ParishData;
+                VillageData = data.VillageData;
+                ImplementingPartnerData = data.ImplementingPartnerData;
+                ImplementationMethodData = data.ImplementationMethodData;
+                NmnSampledForData = data.NmnSampledForData;
+                DeliveryMethodData = data.DeliveryMethodData;
+                InterventionAttendanceData = data.InterventionAttendanceData;
+                YesNoData = data.YesNoData;
+                NmnSectionTwoQuestionData = data.NmnSectionTwoQuestionData;
+                NmnSectionOneQuestionData = data.NmnSectionOneQuestionData;
+                AgreeDisagreeData = data.AgreeDisagreeData;
+                NmnSectionTwoAnswerData = data.NmnSectionTwoAnswerData;
+            }
+
+            var username = userManagement.GetUserName();
+            Credentials = await db.ViewUserManagement.FirstOrDefaultAsync(o => o.UserName == username);
+        }
+        catch (Exception ex)
+        {
+            toastService.ClearAll();
+            toastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    async Task DownloadReport()
+    {
+        try
+        {
+            IsLoading = true;
+            string? DistrictId = null; string? SubcountyId = null;
+            int? SampledForId = null; int? DeliveryMethodId = null; int? ImplementationMethodId = null;
+            string? StartDate = null; string? EndDate = null;
+
+            if (InputModel.DistrictId != null)
+            {
+                DistrictId = string.Join(",", InputModel.DistrictId);
+            }
+            if (InputModel.SubcountyId != null)
+            {
+                SubcountyId = string.Join(",", InputModel.SubcountyId);
+            }
+            if (InputModel.StartDate.HasValue)
+            {
+                StartDate = InputModel.StartDate.Value.ToString("dd/MM/yyyy");
+            }
+            if (InputModel.EndDate.HasValue)
+            {
+                EndDate = InputModel.EndDate.Value.ToString("dd/MM/yyyy");
+            }
+            var data = await Repo.GetNmnquestionaire(DistrictId, SubcountyId, SampledForId, DeliveryMethodId, ImplementationMethodId, StartDate, EndDate);
+            if (data != null && data.Count > 0)
+            {
+                using (ExcelEngine excelEngine = new ExcelEngine())
+                {
+                    IApplication application = excelEngine.Excel;
+                    application.DefaultVersion = ExcelVersion.Excel2013;
+                    IWorkbook workbook = application.Workbooks.Create(1);
+                    IWorksheet worksheet = workbook.Worksheets[0];
+                    worksheet.Name = "No Means No Boys & Young Men (10-hour) Pre or Post Questionnaire Report";
+
+                    List<ColumnClass> QuestionColumns = new List<ColumnClass>();
+
+                    #region Styles
+                    var headerStyle = workbook.Styles.Add("headerStyle");
+
+                    headerStyle.BeginUpdate();
+                    headerStyle.Color = Syncfusion.Drawing.Color.Black; //Syncfusion.Drawing.Color.FromArgb(255, 0, 0);
+                    headerStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    headerStyle.Font.Bold = true;
+                    headerStyle.Font.FontName = "Arial";
+                    headerStyle.Font.Size = 8f;
+                    headerStyle.Font.Color = ExcelKnownColors.White;
+
+                    headerStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    headerStyle.Borders.Color = ExcelKnownColors.White;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    //headerStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thick;
+
+                    headerStyle.WrapText = true;
+
+                    headerStyle.EndUpdate();
+
+                    var Style = workbook.Styles.Add("bodyStyle");
+
+                    Style.BeginUpdate();
+                    Style.HorizontalAlignment = ExcelHAlign.HAlignLeft;
+                    Style.VerticalAlignment = ExcelVAlign.VAlignTop;
+                    Style.Font.Bold = false;
+                    Style.Font.FontName = "Arial";
+                    Style.Font.Size = 8f;
+                    Style.Font.Color = ExcelKnownColors.Black;
+                    Style.WrapText = true;
+                    Style.Borders.Color = ExcelKnownColors.Black;
+                    Style.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    Style.EndUpdate();
+
+
+                    var CategoryStyle = workbook.Styles.Add("CategoryStyle");
+
+                    CategoryStyle.BeginUpdate();
+                    CategoryStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    CategoryStyle.Color = Syncfusion.Drawing.Color.FromArgb(255, 195, 0);
+                    /*CategoryStyle.Color = Syncfusion.Drawing.Color.FromArgb(105, 59, 88);*/ //AUBERGINE
+                    CategoryStyle.Font.Bold = true;
+                    CategoryStyle.Font.FontName = "Arial";
+                    CategoryStyle.Font.Size = 10f;
+                    CategoryStyle.Font.Color = ExcelKnownColors.White;
+                    CategoryStyle.WrapText = true;
+                    CategoryStyle.Borders.Color = ExcelKnownColors.White;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.EndUpdate();
+
+                    var CategoryTotalStyle = workbook.Styles.Add("CategoryTotalStyle");
+
+                    CategoryTotalStyle.BeginUpdate();
+                    CategoryTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    CategoryTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    CategoryTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    CategoryTotalStyle.Font.Bold = true;
+                    CategoryTotalStyle.Font.FontName = "Arial";
+                    CategoryTotalStyle.Font.Size = 8f;
+                    CategoryTotalStyle.Font.Color = ExcelKnownColors.White;
+                    CategoryTotalStyle.WrapText = true;
+                    CategoryTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.EndUpdate();
+
+                    var DivisionStyle = workbook.Styles.Add("DivisionStyle");
+
+                    DivisionStyle.BeginUpdate();
+                    DivisionStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    DivisionStyle.Color = Syncfusion.Drawing.Color.FromArgb(255, 0, 0); //RED
+                    DivisionStyle.Font.Bold = true;
+                    DivisionStyle.Font.FontName = "Arial";
+                    DivisionStyle.Font.Size = 8f;
+                    DivisionStyle.Font.Color = ExcelKnownColors.White;
+                    DivisionStyle.WrapText = true;
+                    DivisionStyle.Borders.Color = ExcelKnownColors.White;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.EndUpdate();
+
+                    var DivisionTotalStyle = workbook.Styles.Add("DivisionTotalStyle");
+
+                    DivisionTotalStyle.BeginUpdate();
+                    DivisionTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    DivisionTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    DivisionTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    DivisionTotalStyle.Font.Bold = true;
+                    DivisionTotalStyle.Font.FontName = "Arial";
+                    DivisionTotalStyle.Font.Size = 8f;
+                    DivisionTotalStyle.Font.Color = ExcelKnownColors.White;
+                    DivisionTotalStyle.WrapText = true;
+                    DivisionTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.EndUpdate();
+
+
+                    var TopicStyle = workbook.Styles.Add("TopicStyle");
+
+                    TopicStyle.BeginUpdate();
+                    TopicStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    TopicStyle.Color = Syncfusion.Drawing.Color.FromArgb(105, 59, 88); //AUBERGINE
+                    TopicStyle.Font.Bold = true;
+                    TopicStyle.Font.FontName = "Arial";
+                    TopicStyle.Font.Size = 8f;
+                    TopicStyle.Font.Color = ExcelKnownColors.White;
+                    TopicStyle.WrapText = true;
+                    TopicStyle.Borders.Color = ExcelKnownColors.White;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.EndUpdate();
+
+                    var TopicTotalStyle = workbook.Styles.Add("TopicTotalStyle");
+
+                    TopicTotalStyle.BeginUpdate();
+                    TopicTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    TopicTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    TopicTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    TopicTotalStyle.Font.Bold = true;
+                    TopicTotalStyle.Font.FontName = "Arial";
+                    TopicTotalStyle.Font.Size = 8f;
+                    TopicTotalStyle.Font.Color = ExcelKnownColors.White;
+                    TopicTotalStyle.WrapText = true;
+                    TopicTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.EndUpdate();
+                    #endregion
+
+                    int row = 1;
+                    worksheet.Range[row, 1].Text = "No Means No Boys & Young Men (10-hour) Pre / Post Questionnaire Report";
+                    worksheet.Range["A" + row + ":M" + row].CellStyle = CategoryStyle;
+                    worksheet.Range["A" + row + ":M" + row].CellStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    worksheet.Range["A" + row + ":M" + row].CellStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    worksheet.Range["A" + row].RowHeight = 30;
+                    worksheet.Range["A" + row + ":M" + row].Merge();
+                    row++;
+                    row++;
+                    row++;
+
+                    worksheet.Range[row, 1].Text = "Implementing Partner";
+                    worksheet.Range[row, 1].ColumnWidth = 20;
+
+                    worksheet.Range[row, 2].Text = "Date (DD/MM/YY)";
+                    worksheet.Range[row, 2].ColumnWidth = 20;
+
+                    worksheet.Range[row, 3].Text = "District";
+                    worksheet.Range[row, 3].ColumnWidth = 20;
+
+                    worksheet.Range[row, 4].Text = "Subcounty";
+                    worksheet.Range[row, 4].ColumnWidth = 20;
+
+                    worksheet.Range[row, 5].Text = "Parish";
+                    worksheet.Range[row, 5].ColumnWidth = 20;
+
+                    worksheet.Range[row, 6].Text = "Village";
+                    worksheet.Range[row, 6].ColumnWidth = 20;
+
+                    worksheet.Range[row, 7].Text = "Group Name";
+                    worksheet.Range[row, 7].ColumnWidth = 20;
+
+                    worksheet.Range[row, 8].Text = "Sampled for Pre/post";
+                    worksheet.Range[row, 8].ColumnWidth = 20;
+
+                    worksheet.Range[row, 9].Text = "Delivery Method";
+                    worksheet.Range[row, 9].ColumnWidth = 20;
+
+                    worksheet.Range[row, 10].Text = "Implementation Method";
+                    worksheet.Range[row, 10].ColumnWidth = 20;
+
+                    worksheet.Range[row, 11].Text = "Instructor Names";
+                    worksheet.Range[row, 11].ColumnWidth = 20;
+
+                    worksheet.Range[row, 12].Text = "Age";
+                    worksheet.Range[row, 12].ColumnWidth = 20;
+
+                    worksheet.Range[row, 13].Text = "Serial Number";
+                    worksheet.Range[row, 13].ColumnWidth = 20;
+
+                    //int startColumn = 13;
+                    int EndColumn = 13;
+                    int ClassificationStartColumn = 13;
+
+                    if (NmnSectionOneQuestionData != null && NmnSectionOneQuestionData.Count > 0)
+                    {
+                        foreach (var item in NmnSectionOneQuestionData)
+                        {
+                            EndColumn++;
+                            worksheet.Range[row, EndColumn].Text = item.QuestionDesc;
+                            worksheet.Range[row, EndColumn].ColumnWidth = 20;
+                            QuestionColumns.Add(new ColumnClass() { ColumnNo = EndColumn, QuestionId = item.QuestionId, SectionNo=1 });
+                        }
+
+                        ClassificationStartColumn++;
+                        worksheet.Range[(row - 1), ClassificationStartColumn].Text = "Section 1: Agree or Disagree";
+                        worksheet.Range[(row - 1), ClassificationStartColumn, (row - 1), EndColumn].Merge();
+                        worksheet.Range[(row - 1), ClassificationStartColumn, (row - 1), EndColumn].CellStyle = DivisionStyle;
+
+                        ClassificationStartColumn = EndColumn;
+                    }
+
+                    if (NmnSectionTwoQuestionData != null && NmnSectionTwoQuestionData.Count > 0)
+                    {
+                        foreach (var item in NmnSectionTwoQuestionData)
+                        {
+                            EndColumn++;
+                            worksheet.Range[row, EndColumn].Text = item.QuestionDesc;
+                            worksheet.Range[row, EndColumn].ColumnWidth = 20;
+                            QuestionColumns.Add(new ColumnClass() { ColumnNo = EndColumn, QuestionId = item.QuestionId, SectionNo = 2 });
+                        }
+
+                        ClassificationStartColumn++;
+                        worksheet.Range[(row - 1), ClassificationStartColumn].Text = "Section 2: Multiple Choice";
+                        worksheet.Range[(row - 1), ClassificationStartColumn, (row - 1), EndColumn].Merge();
+                        worksheet.Range[(row - 1), ClassificationStartColumn, (row - 1), EndColumn].CellStyle = CategoryStyle;
+
+                        ClassificationStartColumn = EndColumn;
+                    }
+
+                    worksheet.Range[row, 1, row, EndColumn].CellStyle = headerStyle;
+                    row++;
+                    foreach (var item in data)
+                    {
+                        worksheet.Range[row, 1].Text = ImplementingPartnerData?.FirstOrDefault(x => x.ImplementingPartnerId == item.ImplementingPartnerId)?.ImplementingPartnerName;
+
+                        worksheet.Range[row, 2].Text = item.QuestionairDate?.ToString("dd MMM yyyy");
+
+                        worksheet.Range[row, 3].Text = DistrictData?.FirstOrDefault(x => x.DistrictId == item.DistrictId)?.DistrictDescription;
+
+                        worksheet.Range[row, 4].Text = SubcountyData?.FirstOrDefault(x => x.SubcountyId == item.SubcountyId)?.SubcountyDescription;
+
+                        worksheet.Range[row, 5].Text = ParishData?.FirstOrDefault(x => x.ParishId == item.ParishId)?.ParishDescription;
+
+                        worksheet.Range[row, 6].Text = VillageData?.FirstOrDefault(x => x.VillageId == item.VillageId)?.VillageDescription;
+
+                        worksheet.Range[row, 7].Text = item.GroupName;
+
+                        worksheet.Range[row, 8].Text = NmnSampledForData?.FirstOrDefault(x => x.SampledForId == item.SampledForId)?.SampledForDesc;
+
+                        worksheet.Range[row, 9].Text = DeliveryMethodData?.FirstOrDefault(x => x.DeliveryMethodId == item.DeliveryMethodId)?.DeliveryMethodDesc;
+
+                        worksheet.Range[row, 10].Text = ImplementationMethodData?.FirstOrDefault(x => x.ImplementationMethodId == item.ImplementationMethodId)?.ImplementationMethodDesc;
+
+                        worksheet.Range[row, 11].Text = item.InstructorNames;
+
+                        worksheet.Range[row, 12].Text = item.InstructorAge?.ToString();
+
+                        worksheet.Range[row, 13].Text = item.SerialNo;
+
+                        if (item.NmnquestionaireSectionOne != null && item.NmnquestionaireSectionOne.Any())
+                        {
+                            var _QuestionColumns = QuestionColumns.Where(o => o.SectionNo == 1).ToList();
+                            foreach (var _item in _QuestionColumns)
+                            {
+                                var record = item.NmnquestionaireSectionOne.FirstOrDefault(x => x.QuestionId == _item.QuestionId);
+
+                                worksheet.Range[row, _item.ColumnNo].Text = AgreeDisagreeData?.FirstOrDefault(x => x.AgreeDisagreeId == record?.AgreeDisagreeId)?.AgreeDisagreeDesc;
+                            }
+                        }
+
+                        if (item.NmnquestionaireSectionTwo != null && item.NmnquestionaireSectionTwo.Any())
+                        {
+                            var _QuestionColumns = QuestionColumns.Where(o => o.SectionNo == 2).ToList();
+                            foreach (var _item in _QuestionColumns)
+                            {
+                                var record = item.NmnquestionaireSectionTwo.FirstOrDefault(x => x.QuestionId == _item.QuestionId);
+
+                                worksheet.Range[row, _item.ColumnNo].Text = NmnSectionTwoAnswerData?.FirstOrDefault(x => x.AnswerId == record?.AnswerId)?.AnswerDesc;
+                            }
+                        }
+
+                        worksheet.Range[row, 1, row, EndColumn].CellStyle = Style;
+                        row++;
+                    }
+
+                    MemoryStream ms = new MemoryStream();
+                    // Save and close the document.
+                    workbook.SaveAs(ms);
+                    //Reset the memory stream position.
+                    ms.Position = 0;
+                    await JS.SaveAs("No Means No Boys & Young Men (10-hour) Pre or Post Questionnaire Report.xlsx", ms.ToArray());
+                    ms.Dispose();
+                    workbook.Close();
+                    excelEngine.Dispose();
+                    //outComeResult = "Success:- The report was successfully downloaded.";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ClearAll();
+            toastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+    private class ColumnClass
+    {
+        public int ColumnNo { get; set; }
+        public int QuestionId { get; set; }
+        public int SectionNo { get; set; }
+    }
+}

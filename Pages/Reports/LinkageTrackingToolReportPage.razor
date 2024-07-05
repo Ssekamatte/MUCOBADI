@@ -137,6 +137,7 @@
     List<ADistrict> _DistrictData { get; set; }
     List<AQuarter> QuarterData { get; set; }
     List<FianacialYear> FianacialYearData { get; set; }
+    List<AGender> GenderData { get; set; }
     bool isEnabled { get; set; } = false;
     string outComeResult { get; set; }
 
@@ -155,25 +156,9 @@
                 {
                     FianacialYearData = new List<FianacialYear>();
                     _DistrictData = db.ADistrict.AsNoTracking().ToList();
-                    //QuarterData = db.AQuarter.AsNoTracking().ToList();
-                    //int current_year = DateTime.Now.Year;
-                    //var firstHomeVisitdata = db.BeneficiaryIdentificationRegister.Where(o=> o.DateofIdentification.HasValue==true).OrderBy(o => o.DateofIdentification).AsNoTracking().ToList().FirstOrDefault();
-                    //if (firstHomeVisitdata != null)
-                    //{
-                    //    int firstyear = firstHomeVisitdata.DateofIdentification.Value.Year;
-                    //    for (int i = 0; i <= (current_year - firstyear); i++)
-                    //    {
-
-                    //        if ((current_year - (firstyear + i)) > 0)
-                    //        {
-                    //            FianacialYearData.Add(new FianacialYear { FinancialYear = (firstyear + i), FinancialYearDesc = (firstyear + i).ToString() });
-                    //        }
-                    //    }
-                    //}
-                    //FianacialYearData.Add(new FianacialYear { FinancialYear = current_year, FinancialYearDesc = current_year.ToString()});
                     InputModel = new();
                     var user = db.ViewUserManagement.FirstOrDefault(o => o.UserName == userManagement.GetUserName());
-                   if (!user.RoleName.Contains("Super Administrator") && !user.RoleName.Contains("Administrator") && !user.RoleName.Contains("mel director") && !user.RoleName.Contains("mel manager") && !user.RoleName.Contains("cluster manager"))
+                    if (!user.RoleName.Contains("Super Administrator") && !user.RoleName.Contains("Administrator") && !user.RoleName.Contains("mel director") && !user.RoleName.Contains("mel manager") && !user.RoleName.Contains("cluster manager"))
                     {
                         var districtlist = userManagement.GetUserDistrict();
                         if (districtlist != null && districtlist.Count > 0)
@@ -203,6 +188,7 @@
                     {
                         isEnabled = true;
                     }
+                    GenderData = await db.AGender.ToListAsync();
                 }
             }
 
@@ -218,7 +204,7 @@
         using (var db = new MUCOBADIContext())
         {
             var user = db.ViewUserManagement.FirstOrDefault(o => o.UserName == userManagement.GetUserName());
-           if (!user.RoleName.Contains("Super Administrator") && !user.RoleName.Contains("Administrator") && !user.RoleName.Contains("mel director") && !user.RoleName.Contains("mel manager") && !user.RoleName.Contains("cluster manager"))
+            if (!user.RoleName.Contains("Super Administrator") && !user.RoleName.Contains("Administrator") && !user.RoleName.Contains("mel director") && !user.RoleName.Contains("mel manager") && !user.RoleName.Contains("cluster manager"))
             {
                 var districtlist = userManagement.GetUserDistrict();
                 if (districtlist != null && districtlist.Count > 0)
@@ -297,6 +283,7 @@
             string Subcounty = null;
             string parish = null;
             string village = null;
+            string HouseHoldId = null;
             if (InputModel.DistrictId != null)
             {
                 district = string.Join(",", InputModel.DistrictId);
@@ -340,7 +327,7 @@
                 //}
                 using (var db = new SPToCoreContext())
                 {
-                    var data = await db.spBeneficiaryLinkageTrackingToolReportGetAllAsync(district, Subcounty, InputModel.Startdate, InputModel.Enddate);
+                    var data = await db.spBeneficiaryLinkageTrackingToolNewReportGetAllAsync(district, Subcounty,HouseHoldId, InputModel.Startdate, InputModel.Enddate);
                     if (data.Count > 0)
                     {
                         using (ExcelEngine excelEngine = new ExcelEngine())
@@ -501,11 +488,11 @@
 
                             int row = 1;
                             worksheet.Range["A" + row].Text = "BENEFICIARY LINKAGE TRACKING TOOL REPORT";
-                            worksheet.Range["A" + row + ":AB" + row].CellStyle = CategoryStyle;
-                            worksheet.Range["A" + row + ":AB" + row].CellStyle.HorizontalAlignment = ExcelHAlign.HAlignLeft;
-                            worksheet.Range["A" + row + ":AB" + row].CellStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                            worksheet.Range["A" + row + ":V" + row].CellStyle = CategoryStyle;
+                            worksheet.Range["A" + row + ":V" + row].CellStyle.HorizontalAlignment = ExcelHAlign.HAlignLeft;
+                            worksheet.Range["A" + row + ":V" + row].CellStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
                             worksheet.Range["A" + row].RowHeight = 30;
-                            worksheet.Range["A" + row + ":AB" + row].Merge();
+                            worksheet.Range["A" + row + ":V" + row].Merge();
                             row++;
                             row++;
 
@@ -519,187 +506,126 @@
                             worksheet.Range["C" + row].Text = "Sub county";
                             worksheet.Range["C" + row].ColumnWidth = 20;
 
-                            worksheet.Range["D" + row].Text = "Group Name ";
+                            worksheet.Range["D" + row].Text = "HouseHold Code";
                             worksheet.Range["D" + row].ColumnWidth = 20;
 
-                            worksheet.Range["E" + row].Text = "Other if no group name";
+                            worksheet.Range["E" + row].Text = "Household Member Code";
                             worksheet.Range["E" + row].ColumnWidth = 20;
 
-                            worksheet.Range["F" + row].Text = "Date";
+                            worksheet.Range["F" + row].Text = "Household Member Name";
                             worksheet.Range["F" + row].ColumnWidth = 20;
 
-                            worksheet.Range["G" + row].Text = "Group Type";
+                            worksheet.Range["G" + row].Text = "Gender";
                             worksheet.Range["G" + row].ColumnWidth = 20;
 
-                            worksheet.Range["H" + row].Text = "Other Group Type";
+                            worksheet.Range["H" + row].Text = "Age";
                             worksheet.Range["H" + row].ColumnWidth = 20;
 
-                            worksheet.Range["I" + row].Text = "Name of Service Provider";
+                            worksheet.Range["I" + row].Text = "Linkage Date";
                             worksheet.Range["I" + row].ColumnWidth = 20;
 
-                            worksheet.Range["J" + row].Text = "Service category";
+                            worksheet.Range["J" + row].Text = "Name of Service Provider";
                             worksheet.Range["J" + row].ColumnWidth = 20;
 
-                            worksheet.Range["K" + row].Text = "unique identifier";
+                            worksheet.Range["K" + row].Text = "Service category";
                             worksheet.Range["K" + row].ColumnWidth = 20;
 
-                            worksheet.Range["L" + row].Text = "Beneficiary Category (D / I)";
+                            worksheet.Range["L" + row].Text = "Service Linked To";
                             worksheet.Range["L" + row].ColumnWidth = 20;
 
-                            worksheet.Range["M" + row].Text = "Name";
+                            worksheet.Range["M" + row].Text = "Service Received";
                             worksheet.Range["M" + row].ColumnWidth = 20;
 
-                            worksheet.Range["N" + row].Text = "Gender";
+                            worksheet.Range["N" + row].Text = "Name & Contact of Person providing services";
                             worksheet.Range["N" + row].ColumnWidth = 20;
 
-                            worksheet.Range["O" + row].Text = "Age";
+                            worksheet.Range["O" + row].Text = "Title";
                             worksheet.Range["O" + row].ColumnWidth = 20;
 
-                            worksheet.Range["P" + row].Text = "Service Linked to ";
+                            worksheet.Range["P" + row].Text = "Date";
                             worksheet.Range["P" + row].ColumnWidth = 20;
 
-                            worksheet.Range["Q" + row].Text = "Received Service ? (Y / N)";
+                            worksheet.Range["Q" + row].Text = "Submitted by";
                             worksheet.Range["Q" + row].ColumnWidth = 20;
 
-                            worksheet.Range["R" + row].Text = "Cost of Item /Support (if Applicable)";
+                            worksheet.Range["R" + row].Text = "Title";
                             worksheet.Range["R" + row].ColumnWidth = 20;
 
-                            worksheet.Range["S" + row].Text = "Details of Service Received(Name Items, services and Goods received)";
+                            worksheet.Range["S" + row].Text = "Date Submitted";
                             worksheet.Range["S" + row].ColumnWidth = 20;
 
-                            worksheet.Range["T" + row].Text = "Name & Contact of Person providing services";
+                            worksheet.Range["T" + row].Text = "Reviewed by";
                             worksheet.Range["T" + row].ColumnWidth = 20;
 
                             worksheet.Range["U" + row].Text = "Title";
                             worksheet.Range["U" + row].ColumnWidth = 20;
 
-                            worksheet.Range["V" + row].Text = "Date";
+                            worksheet.Range["V" + row].Text = "Date Reviewed";
                             worksheet.Range["V" + row].ColumnWidth = 20;
-
-                            worksheet.Range["W" + row].Text = "Submitted By";
-                            worksheet.Range["W" + row].ColumnWidth = 20;
-
-                            worksheet.Range["X" + row].Text = "Title";
-                            worksheet.Range["X" + row].ColumnWidth = 20;
-
-                            worksheet.Range["Y" + row].Text = "Date";
-                            worksheet.Range["Y" + row].ColumnWidth = 20;
-
-                            worksheet.Range["Z" + row].Text = "Reviewed By";
-                            worksheet.Range["Z" + row].ColumnWidth = 20;
-
-                            worksheet.Range["AA" + row].Text = "Title";
-                            worksheet.Range["AA" + row].ColumnWidth = 20;
-
-                            worksheet.Range["AB" + row].Text = "Date";
-                            worksheet.Range["AB" + row].ColumnWidth = 20;
-
-                            worksheet.Range["A" + row + ":AB" + row].CellStyle = headerStyle;
+                            worksheet.Range["A" + row + ":V" + row].CellStyle = headerStyle;
                             row++;
                             #endregion Header row
 
                             foreach(var n in data)
                             {
                                 worksheet.Range["A" + row].Text = n.ImplementingPartnerName;
-                                worksheet.Range["A" + row].ColumnWidth = 20;
 
                                 worksheet.Range["B" + row].Text = n.DistrictDescription;
-                                worksheet.Range["B" + row].ColumnWidth = 20;
 
                                 worksheet.Range["C" + row].Text = n.SubcountyDescription;
-                                worksheet.Range["C" + row].ColumnWidth = 20;
 
-                                worksheet.Range["D" + row].Text = n.GroupName;
-                                worksheet.Range["D" + row].ColumnWidth = 20;
+                                worksheet.Range["D" + row].Text = n.HouseHoldCode;
 
-                                //worksheet.Range["E" + row].Text = "Other if no group name";
-                                //worksheet.Range["E" + row].ColumnWidth = 20;
+                                worksheet.Range["E" + row].Text = n.HouseHoldMemberCode;
+
+                                worksheet.Range["F" + row].Text = n.Surname +" "+n.Givenname;
+
+                                worksheet.Range["G" + row].Text = GenderData?.FirstOrDefault(o=> o.GenderId== n.GenderId)?.GenderDescription;
+
+                                worksheet.Range["H" + row].Text = n.Age?.ToString();
 
                                 if (n.LinkageDate.HasValue)
                                 {
-                                    worksheet.Range["F" + row].Text = n.LinkageDate.Value.ToString("dd/MM/yyyy");
-                                    worksheet.Range["F" + row].ColumnWidth = 20;
+                                    worksheet.Range["I" + row].Text = n.LinkageDate.Value.ToString("dd MMM yyyy");
                                 }
 
-                                worksheet.Range["G" + row].Text = n.GroupTypeDesc;
-                                worksheet.Range["G" + row].ColumnWidth = 20;
+                                worksheet.Range["J" + row].Text =n.Service_Provider_Desc;
 
-                                worksheet.Range["H" + row].Text = n.OtherGroupType;
-                                worksheet.Range["H" + row].ColumnWidth = 20;
+                                worksheet.Range["K" + row].Text = n.LinkageServiceCategoryDesc;
 
-                                worksheet.Range["I" + row].Text = n.Service_Provider_Desc;
-                                worksheet.Range["I" + row].ColumnWidth = 20;
+                                worksheet.Range["L" + row].Text = n.ServiceLinkedToDesc;
 
-                                worksheet.Range["J" + row].Text =n.LinkageServiceCategoryDesc;
-                                worksheet.Range["J" + row].ColumnWidth = 20;
+                                worksheet.Range["M" + row].Text = n.ServiceReceivedDesc;
 
-                                worksheet.Range["K" + row].Text = n.HouseHoldMemberCode;
-                                worksheet.Range["K" + row].ColumnWidth = 20;
+                                
+                                worksheet.Range["N" + row].Text = n.PersonProvidingService;
 
-                                worksheet.Range["L" + row].Text = n.Beneficiary_Category;
-                                worksheet.Range["L" + row].ColumnWidth = 20;
-
-                                worksheet.Range["M" + row].Text = n.FullName;
-                                worksheet.Range["M" + row].ColumnWidth = 20;
-
-                                worksheet.Range["N" + row].Text = n.GenderDescription;
-                                worksheet.Range["N" + row].ColumnWidth = 20;
-
-                                if (n.Age.HasValue)
-                                {
-                                    worksheet.Range["O" + row].Number = n.Age.Value;
-                                }
-                                worksheet.Range["O" + row].ColumnWidth = 20;
-
-                                worksheet.Range["P" + row].Text = n.ServiceLinkedToDesc;
-                                worksheet.Range["P" + row].ColumnWidth = 20;
-
-                                worksheet.Range["Q" + row].Text = n.ServiceReceivedDesc;
-                                worksheet.Range["Q" + row].ColumnWidth = 20;
-
-                                worksheet.Range["R" + row].Text = n.IteamCost;
-                                worksheet.Range["R" + row].ColumnWidth = 20;
-
-                                worksheet.Range["S" + row].Text = n.ServiceRecievedDetail;
-                                worksheet.Range["S" + row].ColumnWidth = 20;
-
-                                worksheet.Range["T" + row].Text = n.PersonProvidingService;
-                                worksheet.Range["T" + row].ColumnWidth = 20;
-
-                                worksheet.Range["U" + row].Text = n.TitlePersonProvidingService;
-                                worksheet.Range["U" + row].ColumnWidth = 20;
+                                worksheet.Range["O" + row].Text = n.TitlePersonProvidingService;
 
                                 if (n.DateProvidingService.HasValue)
                                 {
-                                    worksheet.Range["V" + row].Text = n.DateProvidingService.Value.ToString("dd/MM/yyyy");
+                                    worksheet.Range["P" + row].Text = n.DateProvidingService.Value.ToString("dd MMM yyyy");
                                 }
-                                worksheet.Range["V" + row].ColumnWidth = 20;
 
-                                worksheet.Range["W" + row].Text = n.SubmittedBy;
-                                worksheet.Range["W" + row].ColumnWidth = 20;
+                                worksheet.Range["Q" + row].Text = n.SubmittedBy;
 
-                                worksheet.Range["X" + row].Text = n.SubmittedTitle;
-                                worksheet.Range["X" + row].ColumnWidth = 20;
+                                worksheet.Range["R" + row].Text = n.SubmittedTitle;
 
                                 if (n.SubmittedDate.HasValue)
                                 {
-                                    worksheet.Range["Y" + row].Text = n.SubmittedDate.Value.ToString("dd/MM/yyyy");
+                                    worksheet.Range["S" + row].Text = n.SubmittedDate.Value.ToString("dd MMM yyyy");
                                 }
-                                worksheet.Range["Y" + row].ColumnWidth = 20;
 
-                                worksheet.Range["Z" + row].Text =n.ReviewedBy;
-                                worksheet.Range["Z" + row].ColumnWidth = 20;
+                                worksheet.Range["T" + row].Text =n.ReviewedBy;
 
-                                worksheet.Range["AA" + row].Text = n.ReviewTitle;
-                                worksheet.Range["AA" + row].ColumnWidth = 20;
+                                worksheet.Range["U" + row].Text = n.ReviewTitle;
 
                                 if (n.ReviewDate.HasValue)
                                 {
-                                    worksheet.Range["AB" + row].Text = n.ReviewDate.Value.ToString("dd/MM/yyyy");
+                                    worksheet.Range["V" + row].Text = n.ReviewDate.Value.ToString("dd MMM yyyy");
                                 }
-                                worksheet.Range["AB" + row].ColumnWidth = 20;
 
-                                worksheet.Range["A" + row + ":AB" + row].CellStyle = Style;
+                                worksheet.Range["A" + row + ":V" + row].CellStyle = Style;
                                 row++;
                             }
                             MemoryStream ms = new MemoryStream();

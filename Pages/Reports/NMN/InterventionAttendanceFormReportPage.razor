@@ -1,0 +1,600 @@
+﻿@page "/InterventionAttendanceFormReportPage"
+@using MUCOBADI.DTOs
+@using MUCOBADI.Data
+@using MUCOBADI.Interfaces
+@using MUCOBADI.Models
+@using MUCOBADI.Pages.NMN.PartialView
+@using Microsoft.EntityFrameworkCore
+@using System.Collections
+@using Syncfusion.XlsIO
+@using System.IO
+
+@inject IToastService toastService;
+@inject INmnService Repo;
+@inject MUCOBADIContext db;
+@inject UserManagement userManagement;
+@inject Microsoft.JSInterop.IJSRuntime JS
+
+<MudOverlay Visible="@IsLoading" DarkBackground="true" Absolute="true" Style="z-index:200000; height:100vh;">
+    <MudProgressCircular Color="MudBlazor.Color.Secondary" Indeterminate="true" />
+    <MudText Style="color:ghostwhite;">Loading data please wait..</MudText>
+</MudOverlay>
+
+<div class="row">
+    <div class="col-md-12">
+        <BreadCrumbPage CategoryName="NMN" PageName="Intervention Attendance Form" />
+    </div>
+    @if (IsLoading == false)
+    {
+        <div class="col-md-12">
+            <SfAccordion ExpandMode="ExpandMode.Single">
+                <AccordionItems>
+                    <AccordionItem Header="Search Model">
+                        <ContentTemplate>
+                            <div class="row" n style="margin:5px;">
+                                <SearchPanelPartialPage @ref=@SearchPanel DistrictData="@DistrictData" SubcountyData="@SubcountyData" Credentials=@Credentials />
+                                <div class="col-md-4">
+                                    <button type="button" style="margin-top:32px;"
+                                            class="btn btn-primary"
+                                            @onclick="@(async()=>{
+                                            InputModel = SearchPanel.SearchReportRecords();
+                                            await DownloadReport();
+                                        })">
+                                        Download Report
+                                    </button>
+
+                                    <button type="button" style="margin-top:32px;"
+                                            class="btn btn-secondary"
+                                            @onclick="@(() => {
+                                                InputModel =SearchPanel.ClearReportSearch();
+                                            })">
+                                        Clear Search
+                                    </button>
+                                </div>
+                            </div>
+                        </ContentTemplate>
+                    </AccordionItem>
+                </AccordionItems>
+            </SfAccordion>
+        </div>
+    }
+    </div>
+@code {
+    SearchPanelPartialPage? SearchPanel;
+    List<ASubcounty>? SubcountyData { get; set; }
+    List<ADistrict>? DistrictData { get; set; }
+    List<AParish>? ParishData { get; set; }
+    List<AVillage>? VillageData { get; set; }
+    List<AImplementingPartner>? ImplementingPartnerData { get; set; }
+    List<AInterventionType>? InterventionTypeData { get; set; }
+    List<ANmnSampledFor>? NmnSampledForData { get; set; }
+    List<ADeliveryMethod>? DeliveryMethodData { get; set; }
+    List<AInterventionAttendance>? InterventionAttendanceData { get; set; }
+    List<AYesNo>? YesNoData { get; set; }
+    bool IsLoading { get; set; }
+    private ViewUserManagement? Credentials { get; set; }
+
+    private EnrolmentSearchModel InputModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        IsLoading = true;
+        await base.OnInitializedAsync();
+        try
+        {
+            var data = await Repo.GetPrimaryData();
+            if (data != null)
+            {
+                SubcountyData = data.SubcountyData;
+                DistrictData = data.DistrictData;
+                ParishData = data.ParishData;
+                VillageData = data.VillageData;
+                ImplementingPartnerData = data.ImplementingPartnerData;
+                InterventionTypeData = data.InterventionTypeData;
+                NmnSampledForData = data.NmnSampledForData;
+                DeliveryMethodData = data.DeliveryMethodData;
+                InterventionAttendanceData = data.InterventionAttendanceData;
+                YesNoData = data.YesNoData;
+            }
+            var username = userManagement.GetUserName();
+            Credentials = await db.ViewUserManagement.FirstOrDefaultAsync(o => o.UserName == username);
+        }
+        catch (Exception ex)
+        {
+            toastService.ClearAll();
+            toastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    async Task DownloadReport()
+    {
+        try
+        {
+            IsLoading = true;
+            string? DistrictId = null; string? SubcountyId = null;
+            int? InterventionTypeId = null; int? SampledForId = null; int? DeliveryMethodId = null;
+            string? Startdate = null; string? Enddate = null;
+
+            if (InputModel.DistrictId != null)
+            {
+                DistrictId = string.Join(",", InputModel.DistrictId);
+            }
+            if (InputModel.SubcountyId != null)
+            {
+                SubcountyId = string.Join(",", InputModel.SubcountyId);
+            }
+            if (InputModel.StartDate.HasValue)
+            {
+                Startdate = InputModel.StartDate.Value.ToString("dd/MM/yyyy");
+            }
+            if (InputModel.EndDate.HasValue)
+            {
+                Enddate = InputModel.EndDate.Value.ToString("dd/MM/yyyy");
+            }
+            var data = await Repo.GetInterventionAttendanceForm(InterventionTypeId, DistrictId, SubcountyId, SampledForId, DeliveryMethodId, Startdate, Enddate);
+            if (data != null && data.Count > 0)
+            {
+                using (ExcelEngine excelEngine = new ExcelEngine())
+                {
+                    IApplication application = excelEngine.Excel;
+                    application.DefaultVersion = ExcelVersion.Excel2013;
+                    IWorkbook workbook = application.Workbooks.Create(1);
+                    IWorksheet worksheet = workbook.Worksheets[0];
+                    worksheet.Name = "Intervention Attendance Form Report";
+
+
+                    #region Styles
+                    var headerStyle = workbook.Styles.Add("headerStyle");
+
+                    headerStyle.BeginUpdate();
+                    headerStyle.Color = Syncfusion.Drawing.Color.Black; //Syncfusion.Drawing.Color.FromArgb(255, 0, 0);
+                    headerStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    headerStyle.Font.Bold = true;
+                    headerStyle.Font.FontName = "Arial";
+                    headerStyle.Font.Size = 8f;
+                    headerStyle.Font.Color = ExcelKnownColors.White;
+
+                    headerStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    headerStyle.Borders.Color = ExcelKnownColors.White;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    headerStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    //headerStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thick;
+
+                    headerStyle.WrapText = true;
+
+                    headerStyle.EndUpdate();
+
+                    var Style = workbook.Styles.Add("bodyStyle");
+
+                    Style.BeginUpdate();
+                    Style.HorizontalAlignment = ExcelHAlign.HAlignLeft;
+                    Style.VerticalAlignment = ExcelVAlign.VAlignTop;
+                    Style.Font.Bold = false;
+                    Style.Font.FontName = "Arial";
+                    Style.Font.Size = 8f;
+                    Style.Font.Color = ExcelKnownColors.Black;
+                    Style.WrapText = true;
+                    Style.Borders.Color = ExcelKnownColors.Black;
+                    Style.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    Style.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    Style.EndUpdate();
+
+
+                    var CategoryStyle = workbook.Styles.Add("CategoryStyle");
+
+                    CategoryStyle.BeginUpdate();
+                    CategoryStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    CategoryStyle.Color = Syncfusion.Drawing.Color.FromArgb(255, 195, 0);
+                    /*CategoryStyle.Color = Syncfusion.Drawing.Color.FromArgb(105, 59, 88);*/ //AUBERGINE
+                    CategoryStyle.Font.Bold = true;
+                    CategoryStyle.Font.FontName = "Arial";
+                    CategoryStyle.Font.Size = 10f;
+                    CategoryStyle.Font.Color = ExcelKnownColors.White;
+                    CategoryStyle.WrapText = true;
+                    CategoryStyle.Borders.Color = ExcelKnownColors.White;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    CategoryStyle.EndUpdate();
+
+                    var CategoryTotalStyle = workbook.Styles.Add("CategoryTotalStyle");
+
+                    CategoryTotalStyle.BeginUpdate();
+                    CategoryTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    CategoryTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    CategoryTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    CategoryTotalStyle.Font.Bold = true;
+                    CategoryTotalStyle.Font.FontName = "Arial";
+                    CategoryTotalStyle.Font.Size = 8f;
+                    CategoryTotalStyle.Font.Color = ExcelKnownColors.White;
+                    CategoryTotalStyle.WrapText = true;
+                    CategoryTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    CategoryTotalStyle.EndUpdate();
+
+                    var DivisionStyle = workbook.Styles.Add("DivisionStyle");
+
+                    DivisionStyle.BeginUpdate();
+                    DivisionStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    DivisionStyle.Color = Syncfusion.Drawing.Color.FromArgb(255, 0, 0); //RED
+                    DivisionStyle.Font.Bold = true;
+                    DivisionStyle.Font.FontName = "Arial";
+                    DivisionStyle.Font.Size = 8f;
+                    DivisionStyle.Font.Color = ExcelKnownColors.White;
+                    DivisionStyle.WrapText = true;
+                    DivisionStyle.Borders.Color = ExcelKnownColors.White;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    DivisionStyle.EndUpdate();
+
+                    var DivisionTotalStyle = workbook.Styles.Add("DivisionTotalStyle");
+
+                    DivisionTotalStyle.BeginUpdate();
+                    DivisionTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    DivisionTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    DivisionTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    DivisionTotalStyle.Font.Bold = true;
+                    DivisionTotalStyle.Font.FontName = "Arial";
+                    DivisionTotalStyle.Font.Size = 8f;
+                    DivisionTotalStyle.Font.Color = ExcelKnownColors.White;
+                    DivisionTotalStyle.WrapText = true;
+                    DivisionTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    DivisionTotalStyle.EndUpdate();
+
+
+                    var TopicStyle = workbook.Styles.Add("TopicStyle");
+
+                    TopicStyle.BeginUpdate();
+                    TopicStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    TopicStyle.Color = Syncfusion.Drawing.Color.FromArgb(105, 59, 88); //AUBERGINE
+                    TopicStyle.Font.Bold = true;
+                    TopicStyle.Font.FontName = "Arial";
+                    TopicStyle.Font.Size = 8f;
+                    TopicStyle.Font.Color = ExcelKnownColors.White;
+                    TopicStyle.WrapText = true;
+                    TopicStyle.Borders.Color = ExcelKnownColors.White;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    TopicStyle.EndUpdate();
+
+                    var TopicTotalStyle = workbook.Styles.Add("TopicTotalStyle");
+
+                    TopicTotalStyle.BeginUpdate();
+                    TopicTotalStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    TopicTotalStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    TopicTotalStyle.Color = Syncfusion.Drawing.Color.Black;
+                    TopicTotalStyle.Font.Bold = true;
+                    TopicTotalStyle.Font.FontName = "Arial";
+                    TopicTotalStyle.Font.Size = 8f;
+                    TopicTotalStyle.Font.Color = ExcelKnownColors.White;
+                    TopicTotalStyle.WrapText = true;
+                    TopicTotalStyle.Borders.Color = ExcelKnownColors.White;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeLeft].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeRight].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeTop].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.Borders[ExcelBordersIndex.EdgeBottom].LineStyle = ExcelLineStyle.Thin;
+                    TopicTotalStyle.EndUpdate();
+                    #endregion
+
+                    int row = 1;
+                    worksheet.Range[row, 1].Text = "Intervention Attendance Form Report";
+                    worksheet.Range["A" + row + ":M" + row].CellStyle = CategoryStyle;
+                    worksheet.Range["A" + row + ":M" + row].CellStyle.HorizontalAlignment = ExcelHAlign.HAlignCenter;
+                    worksheet.Range["A" + row + ":M" + row].CellStyle.VerticalAlignment = ExcelVAlign.VAlignCenter;
+                    worksheet.Range["A" + row].RowHeight = 30;
+                    worksheet.Range["A" + row + ":M" + row].Merge();
+                    row++;
+                    row++;
+                    row++;
+
+
+                    worksheet.Range[row, 1].Text = "Type";
+                    worksheet.Range[row, 1].ColumnWidth = 20;
+
+                    worksheet.Range[row, 2].Text = "Start Date (DD/MM/YYYY)";
+                    worksheet.Range[row, 2].ColumnWidth = 20;
+
+                    worksheet.Range[row, 3].Text = "End Date (DD/MM/YYYY)";
+                    worksheet.Range[row, 3].ColumnWidth = 20;
+
+                    worksheet.Range[row, 4].Text = "Implementing Partner";
+                    worksheet.Range[row, 4].ColumnWidth = 20;
+
+                    worksheet.Range[row, 5].Text = "District";
+                    worksheet.Range[row, 5].ColumnWidth = 20;
+
+                    worksheet.Range[row, 6].Text = "Subcounty";
+                    worksheet.Range[row, 6].ColumnWidth = 20;
+
+                    worksheet.Range[row, 7].Text = "Parish";
+                    worksheet.Range[row, 7].ColumnWidth = 20;
+
+                    worksheet.Range[row, 8].Text = "Village";
+                    worksheet.Range[row, 8].ColumnWidth = 20;
+
+                    worksheet.Range[row, 9].Text = "Venue (e.g. Church / Community Ctr. Name )";
+                    worksheet.Range[row, 9].ColumnWidth = 20;
+
+                    worksheet.Range[row, 10].Text = "Group Name";
+                    worksheet.Range[row, 10].ColumnWidth = 20;
+
+                    worksheet.Range[row, 11].Text = "Sampled for Pre/post";
+                    worksheet.Range[row, 11].ColumnWidth = 20;
+
+                    worksheet.Range[row, 12].Text = "Delivery Method";
+                    worksheet.Range[row, 12].ColumnWidth = 20;
+
+                    worksheet.Range[row, 13].Text = "Number of boys/girls disclosing sexual violence (tally below)";
+                    worksheet.Range[row, 13].ColumnWidth = 20;
+
+                    worksheet.Range[row, 14].Text = "Number of boys/girls referred (tally below)";
+                    worksheet.Range[row, 14].ColumnWidth = 20;
+
+                    worksheet.Range[row, 15].Text = "Instructors";
+                    worksheet.Range[row, 15].ColumnWidth = 20;
+
+                    worksheet.Range[row, 16].Text = "Intervention Serial Number";
+                    worksheet.Range[row, 16].ColumnWidth = 20;
+
+                    worksheet.Range[row, 17].Text = "Unique ID #";
+                    worksheet.Range[row, 17].ColumnWidth = 20;
+
+                    worksheet.Range[row, 18].Text = "First Name/Given Name";
+                    worksheet.Range[row, 18].ColumnWidth = 20;
+
+                    worksheet.Range[row, 19].Text = "Last Name/Family Name";
+                    worksheet.Range[row, 19].ColumnWidth = 20;
+
+                    worksheet.Range[row, 20].Text = "Age";
+                    worksheet.Range[row, 20].ColumnWidth = 20;
+
+                    worksheet.Range[row, 21].Text = "Date";
+                    worksheet.Range[row, 21].ColumnWidth = 20;
+
+                    worksheet.Range[row, 22].Text = "Attendence";
+                    worksheet.Range[row, 22].ColumnWidth = 20;
+
+                    worksheet.Range[row, 23].Text = "Date";
+                    worksheet.Range[row, 23].ColumnWidth = 20;
+
+                    worksheet.Range[row, 24].Text = "Attendence";
+                    worksheet.Range[row, 24].ColumnWidth = 20;
+
+                    worksheet.Range[row, 25].Text = "Date";
+                    worksheet.Range[row, 25].ColumnWidth = 20;
+
+                    worksheet.Range[row, 26].Text = "Attendence";
+                    worksheet.Range[row, 26].ColumnWidth = 20;
+
+                    worksheet.Range[row, 27].Text = "Date";
+                    worksheet.Range[row, 27].ColumnWidth = 20;
+
+                    worksheet.Range[row, 28].Text = "Attendence";
+                    worksheet.Range[row, 28].ColumnWidth = 20;
+
+                    worksheet.Range[row, 29].Text = "Date";
+                    worksheet.Range[row, 29].ColumnWidth = 20;
+
+                    worksheet.Range[row, 30].Text = "Attendence";
+                    worksheet.Range[row, 30].ColumnWidth = 20;
+
+                    worksheet.Range[row, 31].Text = "Date";
+                    worksheet.Range[row, 31].ColumnWidth = 20;
+
+                    worksheet.Range[row, 32].Text = "Attendence";
+                    worksheet.Range[row, 32].ColumnWidth = 20;
+
+                    worksheet.Range[row, 33].Text = "Date";
+                    worksheet.Range[row, 33].ColumnWidth = 20;
+
+                    worksheet.Range[row, 34].Text = "Attendence";
+                    worksheet.Range[row, 34].ColumnWidth = 20;
+
+                    worksheet.Range[row, 35].Text = "Date";
+                    worksheet.Range[row, 35].ColumnWidth = 20;
+
+                    worksheet.Range[row, 36].Text = "Attendence";
+                    worksheet.Range[row, 36].ColumnWidth = 20;
+
+                    worksheet.Range[row, 37].Text = "Date";
+                    worksheet.Range[row, 37].ColumnWidth = 20;
+
+                    worksheet.Range[row, 38].Text = "Attendence";
+                    worksheet.Range[row, 38].ColumnWidth = 20;
+
+                    worksheet.Range[row, 39].Text = "Date";
+                    worksheet.Range[row, 39].ColumnWidth = 20;
+
+                    worksheet.Range[row, 40].Text = "Attendence";
+                    worksheet.Range[row, 40].ColumnWidth = 20;
+
+                    worksheet.Range[row, 41].Text = "Graduated? (Y/N)";
+                    worksheet.Range[row, 41].ColumnWidth = 20;
+
+                    worksheet.Range[row, 42].Text = "Reviewed by";
+                    worksheet.Range[row, 42].ColumnWidth = 20;
+
+                    worksheet.Range[row, 1, row, 42].CellStyle = headerStyle;
+
+                    worksheet.Range[(row - 1), 21].Text = "Module 1";
+                    worksheet.Range[(row - 1), 21, (row - 1), 22].Merge();
+                    worksheet.Range[(row - 1), 21, (row - 1), 22].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 23].Text = "Module 2";
+                    worksheet.Range[(row - 1), 23, (row - 1), 24].Merge();
+                    worksheet.Range[(row - 1), 23, (row - 1), 24].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 25].Text = "Module 3";
+                    worksheet.Range[(row - 1), 25, (row - 1), 26].Merge();
+                    worksheet.Range[(row - 1), 25, (row - 1), 26].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 27].Text = "Module 4";
+                    worksheet.Range[(row - 1), 27, (row - 1), 28].Merge();
+                    worksheet.Range[(row - 1), 27, (row - 1), 28].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 29].Text = "Module 5";
+                    worksheet.Range[(row - 1), 29, (row - 1), 30].Merge();
+                    worksheet.Range[(row - 1), 29, (row - 1), 30].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 31].Text = "Module 6";
+                    worksheet.Range[(row - 1), 31, (row - 1), 32].Merge();
+                    worksheet.Range[(row - 1), 31, (row - 1), 32].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 33].Text = "Module 7";
+                    worksheet.Range[(row - 1), 33, (row - 1), 34].Merge();
+                    worksheet.Range[(row - 1), 33, (row - 1), 34].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 35].Text = "Module 8";
+                    worksheet.Range[(row - 1), 35, (row - 1), 36].Merge();
+                    worksheet.Range[(row - 1), 35, (row - 1), 36].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 37].Text = "Module 9";
+                    worksheet.Range[(row - 1), 37, (row - 1), 38].Merge();
+                    worksheet.Range[(row - 1), 37, (row - 1), 38].CellStyle = DivisionStyle;
+
+                    worksheet.Range[(row - 1), 39].Text = "Module 10";
+                    worksheet.Range[(row - 1), 39, (row - 1), 40].Merge();
+                    worksheet.Range[(row - 1), 39, (row - 1), 40].CellStyle = DivisionStyle;
+
+                    row++;
+
+                    foreach (var item in data)
+                    {
+                        if (item.InterventionAttendanceFormDetail != null && item.InterventionAttendanceFormDetail.Any())
+                        {
+                            foreach (var _item in item.InterventionAttendanceFormDetail)
+                            {
+                                worksheet.Range[row, 1].Text = InterventionTypeData?.FirstOrDefault(x => x.InterventionTypeId == item.InterventionTypeId)?.InterventionTypeDesc;
+
+                                worksheet.Range[row, 2].Text = item.AttendenceStartDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 3].Text = item.AttendenceEndDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 4].Text = ImplementingPartnerData?.FirstOrDefault(x => x.ImplementingPartnerId == item.ImplementingPartnerId)?.ImplementingPartnerName;
+
+                                worksheet.Range[row, 5].Text = DistrictData?.FirstOrDefault(x => x.DistrictId == item.DistrictId)?.DistrictDescription;
+
+                                worksheet.Range[row, 6].Text = SubcountyData?.FirstOrDefault(x => x.SubcountyId == item.SubcountyId)?.SubcountyDescription;
+
+                                worksheet.Range[row, 7].Text = ParishData?.FirstOrDefault(x => x.ParishId == item.ParishId)?.ParishDescription;
+
+                                worksheet.Range[row, 8].Text = VillageData?.FirstOrDefault(x => x.VillageId == item.VillageId)?.VillageDescription;
+
+                                worksheet.Range[row, 9].Text = item.Venue;
+
+                                worksheet.Range[row, 10].Text = item.GroupName;
+
+                                worksheet.Range[row, 11].Text = NmnSampledForData?.FirstOrDefault(x => x.SampledForId == item.SampledForId)?.SampledForDesc;
+
+                                worksheet.Range[row, 12].Text = DeliveryMethodData?.FirstOrDefault(x => x.DeliveryMethodId == item.DeliveryMethodId)?.DeliveryMethodDesc;
+
+                                worksheet.Range[row, 13].Text = item.NumberDisclosingSexualViolence?.ToString("#,#");
+
+                                worksheet.Range[row, 14].Text = item.NumberRefered?.ToString("#,#");
+
+                                worksheet.Range[row, 15].Text = string.Join(",", item.InterventionAttendanceFormInstructor?.Select(o=> o.InstructorName).ToArray());
+
+                                worksheet.Range[row, 16].Text = item.SerialNo;
+
+                                worksheet.Range[row, 17].Text = _item.UniqueId;
+
+                                worksheet.Range[row, 18].Text = _item.FirstName;
+
+                                worksheet.Range[row, 19].Text = _item.LastName;
+
+                                worksheet.Range[row, 20].Text = _item.Age?.ToString();
+
+                                worksheet.Range[row, 21].Text = _item.ModuleOneDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 22].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleOneInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 23].Text = _item.ModuleTwoDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 24].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleTwoInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 25].Text = _item.ModuleThreeDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 26].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleThreeInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 27].Text = _item.ModuleFourDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 28].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleFourInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 29].Text = _item.ModuleFiveDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 30].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleFiveInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 31].Text = _item.ModuleSixDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 32].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleSixInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 33].Text = _item.ModuleSevenDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 34].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleSevenInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 35].Text = _item.ModuleEightDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 36].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleEightInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 37].Text = _item.ModuleNineDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 38].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleNineInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 39].Text = _item.ModuleTenDate?.ToString("dd MMM yyyy");
+
+                                worksheet.Range[row, 40].Text = InterventionAttendanceData?.FirstOrDefault(x => x.InterventionAttendanceId == _item.ModuleTenInterventionAttendanceId)?.InterventionAttendanceDesc;
+
+                                worksheet.Range[row, 41].Text = YesNoData?.FirstOrDefault(x => x.YesNoId == _item.GraduatedYesNoId)?.YesNoDescription; 
+
+                                worksheet.Range[row, 42].Text = item.ReviewdBy;
+
+                                worksheet.Range[row, 1, row, 42].CellStyle = Style;
+                                row++;
+                            }
+                        }
+                    }
+
+                    MemoryStream ms = new MemoryStream();
+                    // Save and close the document.
+                    workbook.SaveAs(ms);
+                    //Reset the memory stream position.
+                    ms.Position = 0;
+                    await JS.SaveAs("Intervention Attendance Form Report.xlsx", ms.ToArray());
+                    ms.Dispose();
+                    workbook.Close();
+                    excelEngine.Dispose();
+                    //outComeResult = "Success:- The report was successfully downloaded.";
+                }
+            }
+
+        }
+        catch (Exception ex)
+        {
+            toastService.ClearAll();
+            toastService.ShowError(ex.Message);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+}
